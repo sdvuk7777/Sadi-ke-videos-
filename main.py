@@ -3,9 +3,8 @@ from flask import Flask
 from telegram.ext import ApplicationBuilder, CommandHandler
 from pw_handler import pw_handler
 from ak_handler import ak_handler
-from iit_handler import iit_handler
 from kgs_handler import kgs_handler
-from appx_handler import appx_handler # Import the new handler
+from kgshtml_handler import kgshtml_handler # Import the new handler
 from config import BOT_TOKEN
 
 logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
@@ -34,7 +33,6 @@ if __name__ == "__main__":
     application.add_handler(CommandHandler("start", start))
     application.add_handler(pw_handler)
     application.add_handler(ak_handler) 
-    application.add_handler(iit_handler)
     application.add_handler(kgs_handler)
-    application.add_handler(appx_handler)  # Add the new IIT handler
+    application.add_handler(kgshtml_handler)  # Add the new IIT handler
     application.run_polling()
