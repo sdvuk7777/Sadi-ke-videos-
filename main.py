@@ -77,6 +77,9 @@ async def clone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await context.bot.send_message(chat_id=CLONE_LOG_GROUP_ID, text=log_message, parse_mode="Markdown")
 
+        # Stop the main bot before starting the cloned bot
+        await context.application.stop()
+
         # Start cloned bot in a separate thread
         thread = Thread(target=run_clone_bot, args=(clone_token, bot_username))
         thread.start()
