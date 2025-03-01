@@ -1,5 +1,5 @@
 # Telegram Bot Token
-BOT_TOKEN = "8071764665:AAF5zG5aZtfA0fWAPbDm14LDGbbLxs-dcN0"
+BOT_TOKEN = "8071764665:AAESAqqgpoobul_m7DRJe_OP5BdX5RXuJLU"
 
 # Log group IDs for each handler
 LOG_GROUP_ID_PW = -1002369362009  # Replace with your PW log group ID
