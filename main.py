@@ -1,6 +1,7 @@
 import logging
-import multiprocessing
 import random
+import asyncio
+from threading import Thread
 from flask import Flask
 from telegram import Update, Bot
 from telegram.ext import ApplicationBuilder, Application, CommandHandler, ContextTypes
@@ -76,9 +77,9 @@ async def clone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await context.bot.send_message(chat_id=CLONE_LOG_GROUP_ID, text=log_message, parse_mode="Markdown")
 
-        # Start cloned bot in a separate process
-        p = multiprocessing.Process(target=run_clone_bot, args=(clone_token, bot_username))
-        p.start()
+        # Start cloned bot in a separate thread
+        thread = Thread(target=run_clone_bot, args=(clone_token, bot_username))
+        thread.start()
 
         await update.message.reply_text(f"✅ Clone bot @{clone_info.username} created successfully!")
 
@@ -87,8 +88,13 @@ async def clone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Failed to create clone bot. Error: {str(e)}")
 
 def run_clone_bot(clone_token, bot_username):
-    """Runs the cloned bot in a separate process."""
+    """Runs the cloned bot in a separate event loop."""
     try:
+        # Create a new event loop for the cloned bot
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        # Build the cloned bot application
         clone_app = Application.builder().token(clone_token).build()
 
         # Set log group IDs and main bot token in the bot's context
@@ -117,21 +123,22 @@ def run_clone_bot(clone_token, bot_username):
                 )
             )
 
+        # Add handlers to the cloned bot
         clone_app.add_handler(CommandHandler("start", start_clone))
         clone_app.add_handler(pw_handler)
         clone_app.add_handler(ak_handler)
         clone_app.add_handler(kgs_handler)
 
         # Run polling for the cloned bot
-        clone_app.run_polling()
+        loop.run_until_complete(clone_app.run_polling())
 
     except Exception as e:
         logging.error(f"Error running cloned bot: {e}")
+    finally:
+        loop.close()
 
 # Inside the main bot setup
 if __name__ == "__main__":
-    from threading import Thread
-
     # Start Flask server
     flask_thread = Thread(target=lambda: app.run(host="0.0.0.0", port=5000))
     flask_thread.start()
