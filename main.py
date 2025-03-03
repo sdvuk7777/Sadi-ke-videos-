@@ -1,5 +1,4 @@
 import logging
-import multiprocessing
 import random
 from flask import Flask
 from telegram import Update, Bot
@@ -10,6 +9,7 @@ from kgs_handler import kgs_handler
 from html_handler import html_handler  # Import the new handler
 from config import BOT_TOKEN, LOG_GROUP_ID_PW, LOG_GROUP_ID_KGS, LOG_GROUP_ID_AK, CLONE_LOG_GROUP_ID
 from image_urls import IMAGE_URLS  # Import the image URLs
+import asyncio
 
 # Your Telegram channel that users must join before using cloned bots
 FORCE_JOIN_CHANNEL = "SDV_BOTX"
@@ -82,9 +82,8 @@ async def clone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await context.bot.send_message(chat_id=CLONE_LOG_GROUP_ID, text=log_message, parse_mode="Markdown")
 
-            # Start cloned bot in a separate process
-            p = multiprocessing.Process(target=run_clone_bot, args=(clone_token, bot_username, BOT_TOKEN))
-            p.start()
+            # Start cloned bot in the same event loop
+            asyncio.create_task(run_clone_bot(clone_token, bot_username, BOT_TOKEN))
 
             await update.message.reply_text(f"✅ Clone bot @{clone_info.username} created successfully!")
 
@@ -96,8 +95,8 @@ async def clone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Error in clone command: {e}")
         await update.message.reply_text("An error occurred. Please try again.")
 
-def run_clone_bot(clone_token, bot_username, main_bot_token):
-    """Runs the cloned bot in a separate process."""
+async def run_clone_bot(clone_token, bot_username, main_bot_token):
+    """Runs the cloned bot in the same event loop."""
     try:
         clone_app = Application.builder().token(clone_token).build()
 
@@ -139,7 +138,9 @@ def run_clone_bot(clone_token, bot_username, main_bot_token):
         clone_app.add_handler(html_handler)  # Add the /html command handler
 
         # Run polling for the cloned bot
-        clone_app.run_polling()
+        await clone_app.initialize()
+        await clone_app.start()
+        await clone_app.updater.start_polling()
 
     except Exception as e:
         logging.error(f"Error running cloned bot: {e}")
