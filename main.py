@@ -6,8 +6,9 @@ from telegram.ext import ApplicationBuilder, Application, CommandHandler, Contex
 from pw_handler import pw_handler
 from ak_handler import ak_handler
 from kgs_handler import kgs_handler
+from cw_handler import cw_handler  # Import the new handler
 from html_handler import html_handler  # Import the new handler
-from config import BOT_TOKEN, LOG_GROUP_ID_PW, LOG_GROUP_ID_KGS, LOG_GROUP_ID_AK, CLONE_LOG_GROUP_ID
+from config import BOT_TOKEN, LOG_GROUP_ID_PW, LOG_GROUP_ID_KGS, LOG_GROUP_ID_AK, LOG_GROUP_ID_CW, CLONE_LOG_GROUP_ID
 from image_urls import IMAGE_URLS  # Import the image URLs
 import asyncio
 
@@ -37,6 +38,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🫠 /pw - 𝑓𝑜𝑟 𝑃𝑊 𝑐𝑜𝑛𝑡𝑒𝑛𝑡\n\n"
                 "🫠 /kgs - 𝑓𝑜𝑟 KHAN GS 𝑐𝑜𝑛𝑡𝑒𝑛𝑡\n\n"
                 "🫠 /ak - 𝑓𝑜𝑟 𝑨𝒑𝒏𝒊 𝒌𝒂𝒌𝒔𝒉𝒂 𝑐𝑜𝑛𝑡𝑒𝑛𝑡\n\n"
+                "🫠 /cw - 𝑓𝑜𝑟 𝐶𝑎𝑟𝑒𝑒𝑟𝑊𝑖𝑙𝑙 𝑐𝑜𝑛𝑡𝑒𝑛𝑡\n\n"
                 "🛠️ /clone - 𝑇𝑜 𝑐𝑟𝑒𝑎𝑡𝑒 𝑎 𝑐𝑙𝑜𝑛𝑒 𝑜𝑓 𝑡ℎ𝑖𝑠 𝑏𝑜𝑡\n\n"
                 "🌐 /html - 𝐜𝐨𝐧𝐯𝐞𝐫𝐭 𝐭𝐱𝐭 𝐭𝐨 𝐡𝐭𝐦𝐥"
             )
@@ -104,6 +106,7 @@ async def run_clone_bot(clone_token, bot_username, main_bot_token):
         clone_app.log_group_id_pw = LOG_GROUP_ID_PW
         clone_app.log_group_id_kgs = LOG_GROUP_ID_KGS
         clone_app.log_group_id_ak = LOG_GROUP_ID_AK
+        clone_app.log_group_id_cw = LOG_GROUP_ID_CW  # Add log group ID for CW
 
         # Pass the main bot's token to the clone bot
         clone_app.main_bot = Bot(main_bot_token)  # Main bot ka instance
@@ -123,6 +126,7 @@ async def run_clone_bot(clone_token, bot_username, main_bot_token):
                         "🫠 /pw - Extract PW content\n\n"
                         "🫠 /kgs - Extract Khan GS content\n\n"
                         "🫠 /ak - Extract Apni Kaksha content\n\n"
+                        "🫠 /cw - Extract CareerWill content\n\n"
                         "🌐 /html - 𝐜𝐨𝐧𝐯𝐞𝐫𝐭 𝐭𝐱𝐭 𝐭𝐨 𝐡𝐭𝐦𝐥\n\n"
                         "💡 Join our main Channel: @SDV_BOTS"
                     )
@@ -135,6 +139,7 @@ async def run_clone_bot(clone_token, bot_username, main_bot_token):
         clone_app.add_handler(pw_handler)
         clone_app.add_handler(ak_handler)
         clone_app.add_handler(kgs_handler)
+        clone_app.add_handler(cw_handler)  # Add the /cw command handler
         clone_app.add_handler(html_handler)  # Add the /html command handler
 
         # Run polling for the cloned bot
@@ -159,6 +164,7 @@ if __name__ == "__main__":
     application.log_group_id_pw = LOG_GROUP_ID_PW
     application.log_group_id_kgs = LOG_GROUP_ID_KGS
     application.log_group_id_ak = LOG_GROUP_ID_AK
+    application.log_group_id_cw = LOG_GROUP_ID_CW  # Add log group ID for CW
 
     # Pass the main bot's instance to itself (for consistency)
     application.main_bot = Bot(BOT_TOKEN)
@@ -169,6 +175,7 @@ if __name__ == "__main__":
     application.add_handler(pw_handler)
     application.add_handler(ak_handler)
     application.add_handler(kgs_handler)
+    application.add_handler(cw_handler)  # Add the /cw command handler
     application.add_handler(html_handler)  # Add the /html command handler
 
     application.run_polling()
