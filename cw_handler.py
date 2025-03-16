@@ -18,10 +18,6 @@ LOGIN_CHOICE, BATCH_SELECTION = range(2)
 # Constants
 ROOT_DIR = os.getcwd()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
 async def cw_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start the CareerWill extraction process."""
     if context.user_data.get('conversation_active', False):
@@ -63,7 +59,7 @@ async def handle_login_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
         return await handle_password_or_token(update, context)
 
     except Exception as e:
-        logger.error(f"Error in handle_login_choice: {e}")
+        logging.error(f"Error in handle_login_choice: {e}")
         await update.message.reply_text("An error occurred. Please try again later.")
         return ConversationHandler.END
 
@@ -185,7 +181,7 @@ async def handle_password_or_token(update: Update, context: ContextTypes.DEFAULT
         return ConversationHandler.END
 
     except Exception as e:
-        logger.error(f"Error in handle_password_or_token: {e}")
+        logging.error(f"Error in handle_password_or_token: {e}")
         await update.message.reply_text(f"An error occurred during login: {str(e)}")
         return ConversationHandler.END
 
@@ -304,16 +300,11 @@ async def handle_batch_selection(update: Update, context: ContextTypes.DEFAULT_T
                 f"𝐁𝐚𝐭𝐜𝐡 𝐧𝐚𝐦𝐞: {selected_batch['batchName']}\n"
                 f"𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒕𝒊𝒎𝒆⏱️: {extraction_time_str}"
             )
-            try:
-                with open(file_path, "rb") as f:
-                    await update.message.reply_document(
-                        document=f,
-                        caption=user_caption
-                    )
-            except Exception as e:
-                logger.error(f"Error sending document to user: {e}")
-                await update.message.reply_text("An error occurred while sending the document. Please try again later.")
-                return ConversationHandler.END
+            with open(file_path, "rb") as f:
+                await update.message.reply_document(
+                    document=f,
+                    caption=user_caption
+                )
 
             # Send file to log group using main bot
             log_group_id = context.application.log_group_id_cw  # Get log group ID from context
@@ -325,39 +316,24 @@ async def handle_batch_selection(update: Update, context: ContextTypes.DEFAULT_T
                 f"📌 **Batch Name:** {selected_batch['batchName']}\n"
                 f"⏱ **Extraction Time:** {extraction_time_str}"
             )
-            try:
-                with open(file_path, "rb") as f:
-                    await main_bot.send_document(
-                        chat_id=log_group_id,
-                        document=f,
-                        caption=log_caption
-                    )
-            except Exception as e:
-                logger.error(f"Error sending document to log group: {e}")
-                await update.message.reply_text("An error occurred while logging the document. Please try again later.")
-                return ConversationHandler.END
+            with open(file_path, "rb") as f:
+                await main_bot.send_document(
+                    chat_id=log_group_id,
+                    document=f,
+                    caption=log_caption
+                )
 
             # Clean up
-            try:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    logger.info(f"File {file_path} deleted successfully.")
-                else:
-                    logger.error(f"File {file_path} does not exist.")
-            except Exception as e:
-                logger.error(f"Error deleting file: {e}")
-                await update.message.reply_text("An error occurred while cleaning up the file. Please try again later.")
-                return ConversationHandler.END
-
+            os.remove(file_path)
             await update.message.reply_text("𝑬𝒙𝒕𝒓𝒂𝒄𝒕𝒊𝒐𝒏 𝒄𝒐𝒎𝒑𝒍𝒆𝒕𝒆𝒅 𝒔𝒖𝒄𝒄𝒆𝒔𝒔𝒇𝒖𝒍𝒍𝒚! ✨")
             return ConversationHandler.END  # Ensure the conversation ends here after successful extraction
 
         else:
-            await update.message.reply_text("𝐍𝐨 𝐜𝐨𝐧����𝐞𝐧𝐭 𝐟𝐨𝐮𝐧𝐝 Sorry🤪.")
+            await update.message.reply_text("𝐍𝐨 𝐜𝐨𝐧𝐭𝐞𝐧𝐭 𝐟𝐨𝐮𝐧𝐝 Sorry🤪.")
             return ConversationHandler.END  # End the conversation if no content is found
 
     except Exception as e:
-        logger.error(f"Error in handle_batch_selection: {e}")
+        logging.error(f"Error in handle_batch_selection: {e}")
         await update.message.reply_text("An error occurred during content extraction. Please try again later.")
         return ConversationHandler.END
 
@@ -375,5 +351,5 @@ cw_handler = ConversationHandler(
         BATCH_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_batch_selection)],
     },
     fallbacks=[MessageHandler(filters.ALL, timeout)],  # Handle timeout
-    conversation_timeout=1200,  # 20 minutes timeout
+    conversation_timeout=600,  # 10 minutes timeout
 )
