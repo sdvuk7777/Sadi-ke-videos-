@@ -3,6 +3,7 @@ import os
 import requests
 import urllib.parse
 import time
+import cloudscraper
 from telegram import Update
 from telegram.ext import (
     CommandHandler,
@@ -17,6 +18,9 @@ LOGIN_CHOICE, BATCH_SELECTION = range(2)
 
 # Constants
 ROOT_DIR = os.getcwd()
+
+# Initialize cloudscraper to handle Cloudflare challenges
+scraper = cloudscraper.create_scraper()
 
 async def cw_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start the CareerWill extraction process."""
@@ -108,7 +112,8 @@ async def handle_password_or_token(update: Update, context: ContextTypes.DEFAULT
                 "deviceToken": "test_device_token"
             }
             
-            response = requests.post(login_url, headers=headers, json=payload)
+            # Use cloudscraper to bypass Cloudflare
+            response = scraper.post(login_url, headers=headers, json=payload)
             
             if response.status_code != 200:
                 await update.message.reply_text(f"Login failed! Server response: {response.text[:100]}...")
@@ -149,7 +154,7 @@ async def handle_password_or_token(update: Update, context: ContextTypes.DEFAULT
             "accept-encoding": "gzip"
         }
         
-        batch_response = requests.get(
+        batch_response = scraper.get(
             "https://elearn.crwilladmin.com/api/v8/my-batch",
             headers=headers
         )
@@ -218,7 +223,7 @@ async def handle_batch_selection(update: Update, context: ContextTypes.DEFAULT_T
 
         # Fetch topics
         topics_url = f"https://elearn.crwilladmin.com/api/v8/batch-topic/{batch_id}?type=class"
-        topics_response = requests.get(topics_url, headers=headers)
+        topics_response = scraper.get(topics_url, headers=headers)
         
         if topics_response.status_code != 200:
             await update.message.reply_text("Failed to fetch topics. Please try again.")
@@ -236,7 +241,7 @@ async def handle_batch_selection(update: Update, context: ContextTypes.DEFAULT_T
 
             # Fetch class details
             class_url = f"https://elearn.crwilladmin.com/api/v8/batch-detail/{batch_id}?redirectBy=mybatch&topicId={topic_id}&pToken=&chapterId=0"
-            class_response = requests.get(class_url, headers=headers)
+            class_response = scraper.get(class_url, headers=headers)
             
             if class_response.status_code == 200 and 'data' in class_response.json() and 'class_list' in class_response.json()['data']:
                 classes = class_response.json()["data"]["class_list"]["classes"]
@@ -249,7 +254,7 @@ async def handle_batch_selection(update: Update, context: ContextTypes.DEFAULT_T
                     if lesson_ext == "brightcove":
                         # Get detailed class information to get the correct lessonUrl
                         class_detail_url = f"https://elearn.crwilladmin.com/api/v8/class-detail/{class_id}"
-                        class_detail_response = requests.get(class_detail_url, headers=headers)
+                        class_detail_response = scraper.get(class_detail_url, headers=headers)
                         
                         if class_detail_response.status_code == 200 and 'data' in class_detail_response.json() and 'class_detail' in class_detail_response.json()['data']:
                             class_detail = class_detail_response.json()["data"]["class_detail"]
@@ -267,7 +272,7 @@ async def handle_batch_selection(update: Update, context: ContextTypes.DEFAULT_T
 
             # Fetch notes
             notes_url = f"https://elearn.crwilladmin.com/api/v8/batch-notes/{batch_id}?topicId={topic_id}"
-            notes_response = requests.get(notes_url, headers=headers)
+            notes_response = scraper.get(notes_url, headers=headers)
             if notes_response.status_code == 200 and 'data' in notes_response.json() and 'notesDetails' in notes_response.json()['data']:
                 notes = notes_response.json()["data"]["notesDetails"]
                 full_content += "\n   Notes:\n"
