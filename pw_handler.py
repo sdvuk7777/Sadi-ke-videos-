@@ -117,7 +117,7 @@ def send_otp(phone_number):
         "countryCode": "+91",
         "organizationId": ORGANIZATION_ID
     }
-    
+
     response = requests.post(url, json=data, headers=HEADERS)
     if response.status_code == 201:
         return True
@@ -138,7 +138,7 @@ def verify_otp(phone_number, otp):
         "latitude": 0,
         "longitude": 0
     }
-    
+
     response = requests.post(url, json=data, headers=HEADERS)
     if response.status_code == 200:
         return response.json().get("data", {}).get("access_token")
@@ -152,7 +152,7 @@ async def pw_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('conversation_active', False):
         await update.message.reply_text("Ending previous conversation...")
         context.user_data.clear()
-    
+
     context.user_data['conversation_active'] = True
 
     # Ask the user to choose login method
@@ -288,6 +288,13 @@ async def handle_batch_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("DppNotes", callback_data="DppNotes"),
             InlineKeyboardButton("DppSolution", callback_data="DppSolution"),
         ],
+        [
+            InlineKeyboardButton("Video & Notes", callback_data="video_notes"),
+            InlineKeyboardButton("ALL DPP", callback_data="all_dpp"),
+        ],
+        [
+            InlineKeyboardButton("ALL BATCH", callback_data="all_batch"),
+        ],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Choose the type of content to extract:", reply_markup=reply_markup)
@@ -316,28 +323,50 @@ async def extract_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         page = 1
         while True:
-            subject_data = get_batch_contents(batch_id, subject_id, page, auth_code, content_type)
+            if content_type == "video_notes":
+                # Extract both exercises-notes-videos and notes
+                subject_data_exercises = get_batch_contents(batch_id, subject_id, page, auth_code, "exercises-notes-videos")
+                subject_data_notes = get_batch_contents(batch_id, subject_id, page, auth_code, "notes")
+                subject_data = subject_data_exercises + subject_data_notes
+            elif content_type == "all_dpp":
+                # Extract both DppNotes and DppSolution
+                subject_data_dpp_notes = get_batch_contents(batch_id, subject_id, page, auth_code, "DppNotes")
+                subject_data_dpp_solution = get_batch_contents(batch_id, subject_id, page, auth_code, "DppSolution")
+                subject_data = subject_data_dpp_notes + subject_data_dpp_solution
+            elif content_type == "all_batch":
+                # Extract all content types
+                subject_data_exercises = get_batch_contents(batch_id, subject_id, page, auth_code, "exercises-notes-videos")
+                subject_data_notes = get_batch_contents(batch_id, subject_id, page, auth_code, "notes")
+                subject_data_dpp_notes = get_batch_contents(batch_id, subject_id, page, auth_code, "DppNotes")
+                subject_data_dpp_solution = get_batch_contents(batch_id, subject_id, page, auth_code, "DppSolution")
+                subject_data = subject_data_exercises + subject_data_notes + subject_data_dpp_notes + subject_data_dpp_solution
+            else:
+                # Extract single content type
+                subject_data = get_batch_contents(batch_id, subject_id, page, auth_code, content_type)
+
             if not subject_data:
                 break
 
             for item in subject_data:
-                if content_type == "exercises-notes-videos":
-                    full_content += f"{item['topic']}: {item['url'].strip()}\n"
-                elif content_type == "notes":
+                if content_type in ["exercises-notes-videos", "video_notes", "all_batch"]:
+                    if item.get('url'):
+                        full_content += f"{item['topic']}: {item['url'].strip()}\n"
+                elif content_type in ["notes", "video_notes", "all_batch"]:
                     if item.get('homeworkIds'):
                         homework = item['homeworkIds'][0]
                         if homework.get('attachmentIds'):
                             attachment = homework['attachmentIds'][0]
                             full_content += f"{homework['topic']}: {attachment['baseUrl'] + attachment['key']}\n"
-                elif content_type == "DppNotes":
+                elif content_type in ["DppNotes", "all_dpp", "all_batch"]:
                     if item.get('homeworkIds'):
                         for homework in item['homeworkIds']:
                             if homework.get('attachmentIds'):
                                 attachment = homework['attachmentIds'][0]
                                 full_content += f"{homework['topic']}: {attachment['baseUrl'] + attachment['key']}\n"
-                elif content_type == "DppSolution":
-                    url = item['url'].replace("d1d34p8vz63oiq", "d26g5bnklkwsh4").replace("mpd", "m3u8").strip()
-                    full_content += f"{item['topic']}: {url}\n"
+                elif content_type in ["DppSolution", "all_dpp", "all_batch"]:
+                    if item.get('url'):
+                        url = item['url'].replace("d1d34p8vz63oiq", "d26g5bnklkwsh4").replace("mpd", "m3u8").strip()
+                        full_content += f"{item['topic']}: {url}\n"
 
             page += 1
 
