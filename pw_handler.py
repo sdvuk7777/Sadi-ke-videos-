@@ -351,19 +351,19 @@ async def extract_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if content_type in ["exercises-notes-videos", "video_notes", "all_batch"]:
                     if item.get('url'):
                         full_content += f"{item['topic']}: {item['url'].strip()}\n"
-                elif content_type in ["notes", "video_notes", "all_batch"]:
+                if content_type in ["notes", "video_notes", "all_batch"]:
                     if item.get('homeworkIds'):
                         homework = item['homeworkIds'][0]
                         if homework.get('attachmentIds'):
                             attachment = homework['attachmentIds'][0]
                             full_content += f"{homework['topic']}: {attachment['baseUrl'] + attachment['key']}\n"
-                elif content_type in ["DppNotes", "all_dpp", "all_batch"]:
+                if content_type in ["DppNotes", "all_dpp", "all_batch"]:
                     if item.get('homeworkIds'):
                         for homework in item['homeworkIds']:
                             if homework.get('attachmentIds'):
                                 attachment = homework['attachmentIds'][0]
                                 full_content += f"{homework['topic']}: {attachment['baseUrl'] + attachment['key']}\n"
-                elif content_type in ["DppSolution", "all_dpp", "all_batch"]:
+                if content_type in ["DppSolution", "all_dpp", "all_batch"]:
                     if item.get('url'):
                         url = item['url'].replace("d1d34p8vz63oiq", "d26g5bnklkwsh4").replace("mpd", "m3u8").strip()
                         full_content += f"{item['topic']}: {url}\n"
